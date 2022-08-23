@@ -11,7 +11,7 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v3
         with:
-          go-version: '^1.18' 
+          go-version: '^1.19' 
       - name: build
         run: make build
 
@@ -22,6 +22,6 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v3
         with:
-          go-version: '^1.18' 
-      - name: lint
-        run: make lint
+          go-version: '^1.19' 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3

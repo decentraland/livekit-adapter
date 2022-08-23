@@ -6,9 +6,6 @@ else
 PROTOBUF_ZIP = protoc-$(PROTOBUF_VERSION)-linux-x86_64.zip
 endif
 
-lint:
-	golint ./...
-
 tidy:
 	go mod tidy
 
