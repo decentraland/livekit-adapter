@@ -1,2 +1,5 @@
 livekit-adapter
 *.pb.go
+.env
+
+protoc3

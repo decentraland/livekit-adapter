@@ -8,33 +8,32 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
+	"github.com/spf13/viper"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"google.golang.org/protobuf/proto"
+	"gopkg.in/dealancer/validate.v2"
 
 	lksdk "github.com/livekit/server-sdk-go"
 )
 
-type LivekitConfig struct {
-	ApiKey        string
-	ApiSecret     string
-	Host          string
-	MaxUsers      uint32
-	MaxIslandSize uint32
-}
-
 type Config struct {
-	Livekit         LivekitConfig
-	RegistrationURL string
+	RegistrationURL  string `validate:"empty=false & format=url" mapstructure:"TRANSPORT_REGISTRATION_URL"`
+	LivekitApiKey    string `validate:"empty=false" mapstructure:"LIVEKIT_API_KEY"`
+	LivekitApiSecret string `validate:"empty=false" mapstructure:"LIVEKIT_API_SECRET"`
+	LivekitHost      string `validate:"empty=false & format=url" mapstructure:"LIVEKIT_HOST"`
+
+	MaxUsers      uint32 `validate:"gt=0" mapstructure:"MAX_USERS"`
+	MaxIslandSize uint32 `validate:"gt=0" mapstructure:"MAX_ISLAND_SIZE"`
 }
 
-func generateConnStrs(config *LivekitConfig, room string, userIds []string) (map[string]string, error) {
+func generateConnStrs(config *Config, room string, userIds []string) (map[string]string, error) {
 	connStrs := make(map[string]string)
 	for i := 0; i < len(userIds); i++ {
 		userId := userIds[i]
-		at := auth.NewAccessToken(config.ApiKey, config.ApiSecret)
+		at := auth.NewAccessToken(config.LivekitApiKey, config.LivekitApiSecret)
 		grant := &auth.VideoGrant{
 			RoomJoin: true,
 			Room:     room,
@@ -48,7 +47,7 @@ func generateConnStrs(config *LivekitConfig, room string, userIds []string) (map
 			return nil, err
 		}
 
-		connStrs[userId] = fmt.Sprintf("livekit:%s?access_token=%s", config.Host, jwt)
+		connStrs[userId] = fmt.Sprintf("livekit:%s?access_token=%s", config.LivekitHost, jwt)
 	}
 
 	return connStrs, nil
@@ -57,21 +56,37 @@ func generateConnStrs(config *LivekitConfig, room string, userIds []string) (map
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	config := Config{
-		Livekit: LivekitConfig{
-			Host:          "http://127.0.0.1:7880",
-			ApiKey:        "TEST_KEY",
-			ApiSecret:     "TEST_SECRET",
-			MaxUsers:      100,
-			MaxIslandSize: 50,
-		},
-		RegistrationURL: "ws://localhost:5002/transport-registration",
+	viper.SetDefault("MAX_USERS", 100)
+	viper.SetDefault("MAX_ISLAND_SIZE", 50)
+
+	viper.SetConfigName(".env")
+	viper.SetConfigType("env")
+	viper.AddConfigPath(".")
+	viper.AutomaticEnv()
+
+	err := viper.ReadInConfig()
+	if err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Err(err).Msg("Error reading config file")
+			return
+		}
 	}
 
-	roomClient := lksdk.NewRoomServiceClient(config.Livekit.Host, config.Livekit.ApiKey, config.Livekit.ApiSecret)
+	config := Config{}
+	if err := viper.Unmarshal(&config); err != nil {
+		log.Err(err).Msg("Error unmarshalling config")
+		return
+	}
+
+	if err := validate.Validate(&config); err != nil {
+		log.Err(err).Msg("Config is invalid")
+		return
+	}
+
+	roomClient := lksdk.NewRoomServiceClient(config.LivekitHost, config.LivekitApiKey, config.LivekitApiSecret)
 	res, err := roomClient.ListParticipants(context.Background(), &livekit.ListParticipantsRequest{})
 	if err != nil {
-		log.Err(err).Msg("error connecting to livekit")
+		log.Err(err).Msg("Error connecting to livekit")
 		return
 	}
 
@@ -90,7 +105,7 @@ func main() {
 			Message: &TransportMessage_Init{
 				Init: &TransportInit{
 					Type:          TransportType_TRANSPORT_LIVEKIT,
-					MaxIslandSize: config.Livekit.MaxIslandSize,
+					MaxIslandSize: config.MaxIslandSize,
 				},
 			},
 		})
@@ -129,7 +144,7 @@ func main() {
 				roomId := m.AuthRequest.GetRoomId()
 				userIds := m.AuthRequest.GetUserIds()
 
-				connStrs, err := generateConnStrs(&config.Livekit, roomId, userIds)
+				connStrs, err := generateConnStrs(&config, roomId, userIds)
 				if err != nil {
 					log.Err(err).Msg("Error generating connection strings")
 					continue
@@ -181,7 +196,7 @@ func main() {
 				&TransportMessage{
 					Message: &TransportMessage_Heartbeat{
 						Heartbeat: &TransportHeartbeat{
-							AvailableSeats: config.Livekit.MaxUsers - usersCount,
+							AvailableSeats: config.MaxUsers - usersCount,
 							UsersCount:     usersCount,
 						},
 					},
