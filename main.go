@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,24 +10,24 @@ import (
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/spf13/viper"
+	"gopkg.in/dealancer/validate.v2"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"google.golang.org/protobuf/proto"
-	"gopkg.in/dealancer/validate.v2"
 
 	lksdk "github.com/livekit/server-sdk-go"
 )
 
 type Config struct {
-	RegistrationURL  string `validate:"empty=false & format=url" mapstructure:"TRANSPORT_REGISTRATION_URL"`
-	LivekitApiKey    string `validate:"empty=false" mapstructure:"LIVEKIT_API_KEY"`
-	LivekitApiSecret string `validate:"empty=false" mapstructure:"LIVEKIT_API_SECRET"`
-	LivekitHost      string `validate:"empty=false & format=url" mapstructure:"LIVEKIT_HOST"`
+	RegistrationURL  string `validate:"empty=false & format=url"`
+	LivekitApiKey    string `validate:"empty=false"`
+	LivekitApiSecret string `validate:"empty=false"`
+	LivekitHost      string `validate:"empty=false & format=url"`
 
-	MaxUsers      uint32 `validate:"gt=0" mapstructure:"MAX_USERS"`
-	MaxIslandSize uint32 `validate:"gt=0" mapstructure:"MAX_ISLAND_SIZE"`
+	MaxUsers      uint32 `validate:"gt=0"`
+	MaxIslandSize uint32 `validate:"gt=0"`
 }
 
 func generateConnStrs(config *Config, room string, userIds []string) (map[string]string, error) {
@@ -72,14 +73,18 @@ func main() {
 		}
 	}
 
-	config := Config{}
-	if err := viper.Unmarshal(&config); err != nil {
-		log.Err(err).Msg("Error unmarshalling config")
-		return
+	config := Config{
+		RegistrationURL:  viper.GetString("TRANSPORT_REGISTRATION_URL"),
+		LivekitHost:      viper.GetString("LIVEKIT_HOST"),
+		MaxUsers:         viper.GetUint32("MAX_USERS"),
+		MaxIslandSize:    viper.GetUint32("MAX_ISLAND_SIZE"),
+		LivekitApiKey:    viper.GetString("LIVEKIT_API_KEY"),
+		LivekitApiSecret: viper.GetString("LIVEKIT_API_SECRET"),
 	}
 
 	if err := validate.Validate(&config); err != nil {
-		log.Err(err).Msg("Config is invalid")
+		s, _ := json.MarshalIndent(config, "", "\t")
+		log.Err(err).Msgf("Config is invalid %s", string(s))
 		return
 	}
 
