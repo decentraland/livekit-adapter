@@ -18,13 +18,16 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	lksdk "github.com/livekit/server-sdk-go"
+
+	"github.com/golang-jwt/jwt/v4"
 )
 
 type Config struct {
-	RegistrationURL  string `validate:"empty=false & format=url"`
-	LivekitApiKey    string `validate:"empty=false"`
-	LivekitApiSecret string `validate:"empty=false"`
-	LivekitHost      string `validate:"empty=false & format=url"`
+	RegistrationURL    string `validate:"empty=false & format=url"`
+	RegistrationSecret string `validate:"empty=false"`
+	LivekitApiKey      string `validate:"empty=false"`
+	LivekitApiSecret   string `validate:"empty=false"`
+	LivekitHost        string `validate:"empty=false & format=url"`
 
 	MaxUsers      uint32 `validate:"gt=0"`
 	MaxIslandSize uint32 `validate:"gt=0"`
@@ -74,12 +77,13 @@ func main() {
 	}
 
 	config := Config{
-		RegistrationURL:  viper.GetString("TRANSPORT_REGISTRATION_URL"),
-		LivekitHost:      viper.GetString("LIVEKIT_HOST"),
-		MaxUsers:         viper.GetUint32("MAX_USERS"),
-		MaxIslandSize:    viper.GetUint32("MAX_ISLAND_SIZE"),
-		LivekitApiKey:    viper.GetString("LIVEKIT_API_KEY"),
-		LivekitApiSecret: viper.GetString("LIVEKIT_API_SECRET"),
+		RegistrationURL:    viper.GetString("TRANSPORT_REGISTRATION_URL"),
+		RegistrationSecret: viper.GetString("TRANSPORT_REGISTRATION_SECRET"),
+		LivekitHost:        viper.GetString("LIVEKIT_HOST"),
+		MaxUsers:           viper.GetUint32("MAX_USERS"),
+		MaxIslandSize:      viper.GetUint32("MAX_ISLAND_SIZE"),
+		LivekitApiKey:      viper.GetString("LIVEKIT_API_KEY"),
+		LivekitApiSecret:   viper.GetString("LIVEKIT_API_SECRET"),
 	}
 
 	if err := validate.Validate(&config); err != nil {
@@ -97,10 +101,24 @@ func main() {
 
 	log.Debug().Msgf("livekit has %d participants", len(res.Participants))
 
-	ws, _, err := websocket.DefaultDialer.Dial(config.RegistrationURL, nil)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{})
+	accessToken, err := token.SignedString([]byte(config.RegistrationSecret))
 	if err != nil {
-		log.Err(err).Msg("error connecting to transport registration")
+		log.Err(err).Msg("Error creating jwt")
 		return
+	}
+	registrationURL := fmt.Sprintf("%s?access_token=%s", config.RegistrationURL, accessToken)
+
+	ws, _, err := websocket.DefaultDialer.Dial(registrationURL, nil)
+	if err != nil {
+		log.Err(err).Msg("error connecting to transport registration, going to retry once")
+
+		time.Sleep(5 * time.Second)
+		ws, _, err = websocket.DefaultDialer.Dial(registrationURL, nil)
+		if err != nil {
+			log.Err(err).Msg("error connecting to transport registration, stop")
+			return
+		}
 	}
 
 	defer ws.Close()

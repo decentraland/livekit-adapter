@@ -38,3 +38,6 @@ archipelago.pb.go: archipelago.proto protoc3/bin/protoc
 
 build: archipelago.pb.go
 	go build
+
+start: build
+	./livekit-adapter
