@@ -93,13 +93,26 @@ func main() {
 	}
 
 	roomClient := lksdk.NewRoomServiceClient(config.LivekitHost, config.LivekitApiKey, config.LivekitApiSecret)
-	res, err := roomClient.ListParticipants(context.Background(), &livekit.ListParticipantsRequest{})
-	if err != nil {
-		log.Err(err).Msg("Error connecting to livekit")
-		return
+
+	getParticipantsCount := func() (uint32, error) {
+		rooms, err := roomClient.ListRooms(context.Background(), &livekit.ListRoomsRequest{})
+		if err != nil {
+			return 0, err
+		}
+
+		participants := 0
+		for _, room := range rooms.GetRooms() {
+			participants += int(room.NumParticipants)
+		}
+		return uint32(participants), nil
 	}
 
-	log.Debug().Msgf("livekit has %d participants", len(res.Participants))
+	participants, err := getParticipantsCount()
+	if err != nil {
+		log.Err(err).Msg("Error fetching rooms")
+		return
+	}
+	log.Debug().Msgf("livekit has %d participants", participants)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{})
 	accessToken, err := token.SignedString([]byte(config.RegistrationSecret))
@@ -205,13 +218,11 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			res, err := roomClient.ListParticipants(context.Background(), &livekit.ListParticipantsRequest{})
+			usersCount, err := getParticipantsCount()
 			if err != nil {
 				log.Err(err).Msg("Error getting livekit participants")
 				return
 			}
-
-			usersCount := uint32(len(res.Participants))
 
 			log.Debug().Msgf("livekit has %d participants", usersCount)
 
