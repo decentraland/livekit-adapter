@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -28,6 +29,7 @@ type Config struct {
 	LivekitApiKey      string `validate:"empty=false"`
 	LivekitApiSecret   string `validate:"empty=false"`
 	LivekitHost        string `validate:"empty=false & format=url"`
+	Prefix             string
 
 	MaxUsers      uint32 `validate:"gt=0"`
 	MaxIslandSize uint32 `validate:"gt=0"`
@@ -77,6 +79,7 @@ func main() {
 	}
 
 	config := Config{
+		Prefix:             viper.GetString("PREFIX"),
 		RegistrationURL:    viper.GetString("TRANSPORT_REGISTRATION_URL"),
 		RegistrationSecret: viper.GetString("TRANSPORT_REGISTRATION_SECRET"),
 		LivekitHost:        viper.GetString("LIVEKIT_HOST"),
@@ -92,6 +95,11 @@ func main() {
 		return
 	}
 
+	if len(config.Prefix) == 0 {
+		config.Prefix = fmt.Sprintf("%d", rand.Uint32())
+	}
+
+	log.Debug().Msgf("prefix is %s", config.Prefix)
 	roomClient := lksdk.NewRoomServiceClient(config.LivekitHost, config.LivekitApiKey, config.LivekitApiSecret)
 
 	getParticipantsCount := func() (uint32, error) {
@@ -177,7 +185,7 @@ func main() {
 			case *TransportMessage_AuthRequest:
 				log.Debug().Msg("got auth request message")
 				requestId := m.AuthRequest.GetRequestId()
-				roomId := m.AuthRequest.GetRoomId()
+				roomId := fmt.Sprintf("%s:%s", config.Prefix, m.AuthRequest.GetRoomId())
 				userIds := m.AuthRequest.GetUserIds()
 
 				connStrs, err := generateConnStrs(&config, roomId, userIds)
