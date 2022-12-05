@@ -3,7 +3,7 @@ module github.com/decentraland/livekit-adapter
 go 1.18
 
 require (
-	github.com/golang-jwt/jwt/v4 v4.4.2
+	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/gorilla/websocket v1.5.0
 	github.com/livekit/protocol v1.0.1
 	github.com/livekit/server-sdk-go v0.10.4
